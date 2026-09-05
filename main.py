@@ -5,12 +5,53 @@ from datetime import datetime
 
 DB_NAME = "simple_booking.db"
 
+# ---------------------------------------------------------
+# SECTION 5.2: MODULAR BOOKING POLICY SYSTEM (STRATEGY PATTERN)
+# ---------------------------------------------------------
+class BookingPolicy:
+    def get_max_duration(self) -> int:
+        raise NotImplementedError
+
+    def get_description(self) -> str:
+        raise NotImplementedError
+
+class MainCampusPolicy(BookingPolicy):
+    def get_max_duration(self) -> int:
+        return 4
+    
+    def get_description(self) -> str:
+        return "Max 4 Hours | Standard Booking Rules"
+
+class TechHubPolicy(BookingPolicy):
+    def get_max_duration(self) -> int:
+        return 2
+    
+    def get_description(self) -> str:
+        return "Max 2 Hours | High Demand Policy"
+
+class DistanceCenterPolicy(BookingPolicy):
+    def get_max_duration(self) -> int:
+        return 8
+    
+    def get_description(self) -> str:
+        return "Max 8 Hours | Extended Booking Rules"
+
+CAMPUS_POLICIES = {
+    "Main Campus": MainCampusPolicy(),
+    "Tech Hub": TechHubPolicy(),
+    "Distance Center": DistanceCenterPolicy()
+}
+
+def get_policy_for_campus(campus_name: str) -> BookingPolicy:
+    return CAMPUS_POLICIES.get(campus_name, MainCampusPolicy())
+
+# ---------------------------------------------------------
 # 1. DATABASE SETUP
+# ---------------------------------------------------------
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Users table supporting roles and assigned campuses
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
@@ -20,7 +61,6 @@ def init_db():
         )
     ''')
 
-    # Campuses table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS campuses (
             campus_name TEXT PRIMARY KEY,
@@ -48,7 +88,6 @@ def init_db():
         )
     ''')
 
-    # Seed Default Campuses
     cursor.execute("SELECT COUNT(*) FROM campuses")
     if cursor.fetchone()[0] == 0:
         cursor.executemany("INSERT INTO campuses VALUES (?, ?)", [
@@ -57,35 +96,37 @@ def init_db():
             ("Distance Center", 8)
         ])
     
-    # Add default resources if empty
     cursor.execute("SELECT COUNT(*) FROM resources")
     if cursor.fetchone()[0] == 0:
         cursor.executemany("INSERT INTO resources (campus, name, type) VALUES (?, ?, ?)", [
             ("Main Campus", "Computer Lab 1", "Lab"),
             ("Main Campus", "HD Projector A", "Projector"),
-            ("Tech Hub", "Seminar Hall", "Room")
+            ("Main Campus", "Lecture Hall 101", "Room"),
+            ("Tech Hub", "Seminar Hall", "Room"),
+            ("Tech Hub", "VR Workstation", "Lab"),
+            ("Distance Center", "Recording Studio", "Room")
         ])
         
     conn.commit()
     conn.close()
 
+# ---------------------------------------------------------
 # 2. MAIN APPLICATION GUI
+# ---------------------------------------------------------
 class SimpleBookingApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Resource Booking System")
-        self.geometry("500x580")
+        self.geometry("550x620")
         
         self.current_user = None
         self.current_role = None
         self.user_primary_campus = None
         self.active_campus = "Main Campus"
 
-        # --- TTK STYLING FOR BORDERS & GRIDLINES ---
         style = ttk.Style()
-        style.theme_use("clam")  # Allows full border customization
+        style.theme_use("clam")
         
-        # Enclose headings with borders
         style.configure(
             "Treeview.Heading",
             font=("Arial", 9, "bold"),
@@ -94,7 +135,6 @@ class SimpleBookingApp(tk.Tk):
             borderwidth=1
         )
         
-        # Add vertical gridlines between cells
         style.configure(
             "Treeview",
             gridlines=True,
@@ -238,7 +278,6 @@ class SimpleBookingApp(tk.Tk):
     def build_dashboard(self):
         self.clear_container()
 
-        # Header Bar
         top_bar = tk.Frame(self.container, bg="#e6e6e6", padx=10, pady=5)
         top_bar.pack(fill="x")
 
@@ -255,52 +294,120 @@ class SimpleBookingApp(tk.Tk):
         body = tk.Frame(self.container, padx=10, pady=10)
         body.pack(fill="both", expand=True)
 
-        # Render role-specific interface
-        if self.current_role == "Lecturer":
+        if "Lecturer" in self.current_role:
             self.build_lecturer_view(body)
-        elif self.current_role == "Campus Administrator":
+        elif "Administrator" in self.current_role:
             self.build_admin_view(body)
-        elif self.current_role == "System Operator":
+        elif "Operator" in self.current_role:
             self.build_operator_view(body)
 
-    # --- LECTURER ROLE INTERFACE ---
+    # --- SECTION 5 & 6: LECTURER ROLE INTERFACE WITH POLICY & MANAGEMENT ---
     def build_lecturer_view(self, parent):
-        tk.Label(parent, text="Campus Resource Booking", font=("Arial", 14, "bold")).pack(pady=5)
+        policy = get_policy_for_campus(self.active_campus)
 
-        tk.Label(parent, text="Your Name:").pack()
-        self.ent_user = tk.Entry(parent)
-        self.ent_user.insert(0, self.current_user)
-        self.ent_user.config(state="readonly")
-        self.ent_user.pack(pady=2)
+        tk.Label(parent, text="Campus Resource Booking", font=("Arial", 14, "bold")).pack(pady=2)
 
-        tk.Label(parent, text="Select Resource:").pack()
-        self.cmb_resource = ttk.Combobox(parent, values=self.get_resources(), state="readonly")
-        self.cmb_resource.pack(pady=2)
-        if self.cmb_resource["values"]:
+        # 5.1 Clear Policy Indicator
+        policy_lbl = tk.Label(parent, text=f"Active Policy ({self.active_campus}): {policy.get_description()}", font=("Arial", 9, "bold"), fg="#0E01C4", bg="#EAF2FF", padx=5, pady=3)
+        policy_lbl.pack(pady=4)
+
+        # Form Container
+        form_frame = tk.Frame(parent)
+        form_frame.pack(pady=5)
+
+        tk.Label(form_frame, text="Select Resource:").grid(row=0, column=0, sticky="e", pady=2)
+        resources = self.get_resources()
+        self.cmb_resource = ttk.Combobox(form_frame, values=resources, state="readonly", width=22)
+        self.cmb_resource.grid(row=0, column=1, pady=2, padx=5)
+        if resources:
             self.cmb_resource.current(0)
 
-        tk.Label(parent, text="Date (YYYY-MM-DD):").pack()
-        self.ent_date = tk.Entry(parent)
+        tk.Label(form_frame, text="Date (YYYY-MM-DD):").grid(row=1, column=0, sticky="e", pady=2)
+        self.ent_date = tk.Entry(form_frame, width=25)
         self.ent_date.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        self.ent_date.pack(pady=2)
+        self.ent_date.grid(row=1, column=1, pady=2, padx=5)
 
-        tk.Label(parent, text="Duration (Hours, Max 4):").pack()
-        self.ent_hours = tk.Entry(parent)
-        self.ent_hours.insert(0, "2")
-        self.ent_hours.pack(pady=2)
+        tk.Label(form_frame, text=f"Duration (Hours, Max {policy.get_max_duration()}):").grid(row=2, column=0, sticky="e", pady=2)
+        self.ent_hours = tk.Entry(form_frame, width=25)
+        self.ent_hours.insert(0, str(min(2, policy.get_max_duration())))
+        self.ent_hours.grid(row=2, column=1, pady=2, padx=5)
 
-        tk.Button(parent, text="Book Resource", command=self.save_booking, bg="#0E01C4", fg="white").pack(pady=10)
+        tk.Button(parent, text="Book Resource", command=self.save_booking, bg="#0E01C4", fg="white", width=18).pack(pady=6)
 
-        tk.Label(parent, text="Current Campus Bookings:", font=("Arial", 10, "bold")).pack(pady=5)
-        self.tree = ttk.Treeview(parent, columns=("User", "Resource", "Date", "Hours"), show="headings", height=6)
-        
-        for col in ("User", "Resource", "Date", "Hours"):
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=100, anchor="center")
-            
-        self.tree.pack(fill="x", padx=10, pady=5)
+        # 6.1 Notebook for Active Bookings, Cancellation, and History
+        notebook = ttk.Notebook(parent)
+        notebook.pack(fill="both", expand=True, pady=5)
 
-        self.load_bookings()
+        # Tab 1: Active & Future Bookings
+        tab_active = ttk.Frame(notebook, padding=5)
+        notebook.add(tab_active, text="Active / Future Bookings")
+
+        self.tree_active = ttk.Treeview(tab_active, columns=("ID", "Resource", "Date", "Hours"), show="headings", height=5)
+        for col, width in [("ID", 40), ("Resource", 150), ("Date", 100), ("Hours", 60)]:
+            self.tree_active.heading(col, text=col)
+            self.tree_active.column(col, width=width, anchor="center")
+        self.tree_active.pack(fill="both", expand=True)
+
+        tk.Button(tab_active, text="Cancel Selected Booking", command=self.cancel_selected_booking, bg="#d9534f", fg="white").pack(pady=4)
+
+        # Tab 2: Booking History
+        tab_history = ttk.Frame(notebook, padding=5)
+        notebook.add(tab_history, text="Past Booking History")
+
+        self.tree_history = ttk.Treeview(tab_history, columns=("ID", "Resource", "Date", "Hours"), show="headings", height=5)
+        for col, width in [("ID", 40), ("Resource", 150), ("Date", 100), ("Hours", 60)]:
+            self.tree_history.heading(col, text=col)
+            self.tree_history.column(col, width=width, anchor="center")
+        self.tree_history.pack(fill="both", expand=True)
+
+        self.load_lecturer_bookings()
+
+    def cancel_selected_booking(self):
+        selected = self.tree_active.selection()
+        if not selected:
+            messagebox.showerror("Error", "Please select an active booking to cancel.")
+            return
+
+        booking_id = self.tree_active.item(selected[0])["values"][0]
+
+        if messagebox.askyesno("Confirm Cancellation", f"Are you sure you want to cancel booking ID #{booking_id}?"):
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM bookings WHERE id=?", (booking_id,))
+            conn.commit()
+            conn.close()
+            messagebox.showinfo("Success", "Booking cancelled successfully.")
+            self.load_lecturer_bookings()
+
+    def load_lecturer_bookings(self):
+        if not hasattr(self, 'tree_active') or not hasattr(self, 'tree_history'):
+            return
+
+        for tree in (self.tree_active, self.tree_history):
+            for row in tree.get_children():
+                tree.delete(row)
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+
+        # Active & Future Bookings
+        cursor.execute(
+            "SELECT id, resource_name, booking_date, hours FROM bookings WHERE user_name=? AND campus=? AND booking_date >= ? ORDER BY booking_date ASC",
+            (self.current_user, self.active_campus, today_str)
+        )
+        for row in cursor.fetchall():
+            self.tree_active.insert("", "end", values=row)
+
+        # Past History
+        cursor.execute(
+            "SELECT id, resource_name, booking_date, hours FROM bookings WHERE user_name=? AND campus=? AND booking_date < ? ORDER BY booking_date DESC",
+            (self.current_user, self.active_campus, today_str)
+        )
+        for row in cursor.fetchall():
+            self.tree_history.insert("", "end", values=row)
+
+        conn.close()
 
     # --- CAMPUS ADMIN INTERFACE ---
     def build_admin_view(self, parent):
@@ -355,7 +462,6 @@ class SimpleBookingApp(tk.Tk):
         tk.Button(tab_res, text="Add Resource", command=add_resource, bg="#0E01C4", fg="white").grid(row=2, column=0, columnspan=2, pady=5)
         load_campus_resources()
 
-        # Analytics Tab
         tab_analytics = ttk.Frame(notebook, padding=10)
         notebook.add(tab_analytics, text="Campus Analytics")
 
@@ -413,13 +519,17 @@ class SimpleBookingApp(tk.Tk):
             messagebox.showerror("Error", "No resource selected or available.")
             return
 
+        # 5.1 Enforce Policy Max Duration Automatically
+        policy = get_policy_for_campus(self.active_campus)
+        max_hrs = policy.get_max_duration()
+
         try:
             hrs = int(hours)
-            if hrs < 1 or hrs > 4:
-                messagebox.showerror("Error", "Hours must be between 1 and 4.")
+            if hrs < 1 or hrs > max_hrs:
+                messagebox.showerror("Policy Error", f"Duration for {self.active_campus} must be between 1 and {max_hrs} hours.")
                 return
         except ValueError:
-            messagebox.showerror("Error", "Hours must be a number.")
+            messagebox.showerror("Error", "Hours must be a valid number.")
             return
 
         conn = sqlite3.connect(DB_NAME)
@@ -432,24 +542,9 @@ class SimpleBookingApp(tk.Tk):
         conn.close()
 
         messagebox.showinfo("Success", "Booking Saved!")
-        self.load_bookings()
-
-    def load_bookings(self):
-        if not hasattr(self, 'tree'):
-            return
-
-        for row in self.tree.get_children():
-            self.tree.delete(row)
-            
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_name, resource_name, booking_date, hours FROM bookings WHERE campus=?", (self.active_campus,))
-        for row in cursor.fetchall():
-            self.tree.insert("", "end", values=row)
-        conn.close()
+        self.load_lecturer_bookings()
 
 if __name__ == "__main__":
     init_db()
     app = SimpleBookingApp()
     app.mainloop()
-    
