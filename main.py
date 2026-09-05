@@ -45,8 +45,28 @@ class SimpleBookingApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Resource Booking System")
-        self.geometry("450x450")
+        self.geometry("450x480")
         
+        # --- TTK STYLING FOR BORDERS & GRIDLINES ---
+        style = ttk.Style()
+        style.theme_use("clam")  # Allows full border customization
+        
+        # Enclose headings with borders
+        style.configure(
+            "Treeview.Heading",
+            font=("Arial", 9, "bold"),
+            background="#d9d9d9",
+            relief="solid",
+            borderwidth=1
+        )
+        
+        # Add vertical gridlines between cells
+        style.configure(
+            "Treeview",
+            gridlines=True,
+            rowheight=22
+        )
+
         # --- INPUT FIELDS ---
         tk.Label(self, text="Campus Resource Booking", font=("Arial", 14, "bold")).pack(pady=10)
 
@@ -70,15 +90,17 @@ class SimpleBookingApp(tk.Tk):
         self.ent_hours.insert(0, "2")
         self.ent_hours.pack(pady=2)
 
-        tk.Button(self, text="Book Resource", command=self.save_booking, bg="#4CAF50", fg="white").pack(pady=10)
+        tk.Button(self, text="Book Resource", command=self.save_booking, bg="#0E01C4", fg="white").pack(pady=10)
 
         # --- RECENT BOOKINGS LIST ---
         tk.Label(self, text="Current Bookings:", font=("Arial", 10, "bold")).pack(pady=5)
         self.tree = ttk.Treeview(self, columns=("User", "Resource", "Date", "Hours"), show="headings", height=6)
+        
         for col in ("User", "Resource", "Date", "Hours"):
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=90)
-        self.tree.pack(fill="x", px=10)
+            self.tree.column(col, width=100, anchor="center")
+            
+        self.tree.pack(fill="x", padx=10, pady=5)
 
         self.load_bookings()
 
